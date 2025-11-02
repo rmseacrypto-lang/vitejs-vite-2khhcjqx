@@ -188,7 +188,7 @@ const defaultData: DataModel = {
   date: "",
   session: "Asia",
   news: "None",
-  webhookUrl: "",
+  webhookUrl: "https://script.google.com/macros/s/AKfycbzzf9hUq6Tohm5n6ZKgxRxK9109oZRzzhUGcr4fMNzGxPqVRS_uhA30qyzH1sbRp00gNQ/exec",
 };
 
 // ---------- Scoring ----------
