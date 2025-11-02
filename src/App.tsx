@@ -368,18 +368,21 @@ export default function App(){
   };
 
   const exportToGoogleSheet = async () => {
-    if(!data.webhookUrl){ alert("Add your Google Sheet webhook URL in Settings"); return; }
-    try{
+    if (!data.webhookUrl) { alert("Add your Google Sheet webhook URL in Settings"); return; }
+    try {
       const payload = buildPayload();
       payload.secret = ""; // set if your Apps Script checks it
       const res = await fetch(data.webhookUrl, {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify(payload),
+        method: "POST",
+        // Important: no custom headers to avoid preflight
+        body: JSON.stringify(payload), // Apps Script will read postData.contents
       });
-      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      // In no-cors mode you cannot read response; we are not using that here
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("Sent to Google Sheet");
-    }catch(e:any){ alert(`Failed to send: ${e.message}`); }
+    } catch (e: any) {
+      alert(`Failed to send: ${e.message}`);
+    }
   };
 
   const StoryTracker = () => (
