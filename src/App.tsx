@@ -188,7 +188,7 @@ const defaultData: DataModel = {
   date: "",
   session: "Asia",
   news: "None",
-  webhookUrl: "https://script.google.com/macros/s/AKfycbzzf9hUq6Tohm5n6ZKgxRxK9109oZRzzhUGcr4fMNzGxPqVRS_uhA30qyzH1sbRp00gNQ/exec",
+  webhookUrl: "https://script.google.com/macros/s/AKfycbwGqG_wOhokTF_Mqmz3aDrd2QC-05JEx6YhrqdsthRu_5lq5cvwSX2PrajUTgpjZ9EfNw/exec",
 };
 
 // ---------- Scoring ----------
@@ -374,8 +374,8 @@ export default function App(){
       payload.secret = ""; // set if your Apps Script checks it
       const res = await fetch(data.webhookUrl, {
         method: "POST",
-        // Important: no custom headers to avoid preflight
-        body: JSON.stringify(payload), // Apps Script will read postData.contents
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload),
       });
       // In no-cors mode you cannot read response; we are not using that here
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
