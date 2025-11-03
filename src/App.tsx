@@ -4,7 +4,7 @@ import React, { useMemo, useEffect, useState } from "react";
 // Tailwind via CDN in index.html
 // Data is saved to localStorage
 
-const APP_VERSION = "v 1.00.002";
+const APP_VERSION = "v 1.00.003";
 
 // ---------- Types ----------
 export type Pair =
