@@ -188,7 +188,7 @@ const defaultData: DataModel = {
   date: "",
   session: "Asia",
   news: "None",
-  On thUrl: "https://script.google.com/macros/s/AKfycbxuneHJ7IoHPD-uJQv8T9IMgkqadFlVUMAIt6vT6ykNLRc0c1EW1bbmawvZe9K8Yl1vHQ/exec",
+  webhookUrl: "https://script.google.com/macros/s/AKfycbxuneHJ7IoHPD-uJQv8T9IMgkqadFlVUMAIt6vT6ykNLRc0c1EW1bbmawvZe9K8Yl1vHQ/exec",
 };
 
 // ---------- Scoring ----------
@@ -384,20 +384,6 @@ export default function App(){
       alert(`Failed to send: ${e.message}`);
     }
   };
-
-  // ---- Quick client call (test-only) ----
-async function sendTelegram(text: string, botToken: string, chatId: string) {
-  if (!botToken || !chatId) {
-    alert("Add your Telegram bot token and chat id first");
-    return;
-  }
-  await fetch(`https://api.telegram.org/bot8449252983:AAGRCnBm8bineb4i6ZJW8ZRIIeYhiqDWsWM/sendMessage`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text }),
-  });
-}
-
 
   const StoryTracker = () => (
     <div className="grid gap-4">
