@@ -4,7 +4,7 @@ import React, { useMemo, useEffect, useState } from "react";
 // Tailwind via CDN in index.html
 // Data is saved to localStorage
 
-const APP_VERSION = "v 1.00.001";
+const APP_VERSION = "v 1.00.002";
 
 // ---------- Types ----------
 export type Pair =
@@ -16,6 +16,7 @@ export type Pair =
   | "USDCAD" | "USDCHF" | "USDJPY";
 
 export type AnchorTF = "M" | "W" | "D" | "4H" | "1H";
+export type TradeTF = "1m" | "3m" | "5m" | "15m" | "30m" | "1H" | "2H" | "4H" | "D";
 export type Story = "pullback" | "swoop" | "hold" | "fomo" | "dash" | "on";
 export type Correlation = "full" | "partial" | "none";
 export type Breach = "strong" | "ok";
@@ -64,6 +65,7 @@ export interface DataModel {
   date: string; // yyyy-mm-dd
   session: Session;
   news: NewsImpact;
+  timeframe: TradeTF; // NEW: current setup timeframe
   webhookUrl: string; // journal sheet endpoint
 }
 
@@ -78,6 +80,7 @@ const PAIRS: Pair[] = [
 ];
 
 const ANCHOR_TF: AnchorTF[] = ["M","W","D","4H","1H"];
+const TRADE_TF: TradeTF[] = ["1m","3m","5m","15m","30m","1H","2H","4H","D"];
 const STORY_OPTIONS: { label: string; value: Story }[] = [
   { label: "Pullback", value: "pullback" },
   { label: "Swoop", value: "swoop" },
@@ -127,17 +130,28 @@ const NoteBox = ({ label, value, onChange, placeholder }:{
   </div>
 );
 
-const SectionCard = ({ title, children, right }:{
-  title:string; children:React.ReactNode; right?:React.ReactNode;
-}) => (
-  <div className="rounded-2xl border border-gray-200 bg-white shadow-sm">
-    <div className="flex items-center justify-between p-4 border-b">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      {right}
+const SectionCard = ({ title, children, right, tone }:{
+  title:string; children:React.ReactNode; right?:React.ReactNode; tone?: "gray"|"green"|"yellow"|"red"|"blue"|"indigo";
+}) => {
+  const toneMap: Record<string, { wrap:string; header:string }> = {
+    gray:   { wrap: "border-gray-200 bg-white",       header: "border-b" },
+    green:  { wrap: "border-green-300 bg-green-50",    header: "border-b border-green-200" },
+    yellow: { wrap: "border-yellow-300 bg-yellow-50",  header: "border-b border-yellow-200" },
+    red:    { wrap: "border-red-300 bg-red-50",        header: "border-b border-red-200" },
+    blue:   { wrap: "border-blue-300 bg-blue-50",      header: "border-b border-blue-200" },
+    indigo: { wrap: "border-indigo-300 bg-indigo-50",  header: "border-b border-indigo-200" },
+  };
+  const t = tone ? toneMap[tone] : toneMap.gray;
+  return (
+    <div className={`rounded-2xl border shadow-sm ${t.wrap}`}>
+      <div className={`flex items-center justify-between p-4 ${t.header}`}>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        {right}
+      </div>
+      <div className="p-4 grid gap-4">{children}</div>
     </div>
-    <div className="p-4 grid gap-4">{children}</div>
-  </div>
-);
+  );
+};
 
 const Pill = ({ children, tone = "gray" }:{children:React.ReactNode; tone?: "gray"|"green"|"yellow"|"red"|"blue"|"indigo"}) => {
   const tones:Record<string,string> = {
@@ -188,7 +202,8 @@ const defaultData: DataModel = {
   date: "",
   session: "Asia",
   news: "None",
-  webhookUrl: "https://script.google.com/macros/s/AKfycbxuneHJ7IoHPD-uJQv8T9IMgkqadFlVUMAIt6vT6ykNLRc0c1EW1bbmawvZe9K8Yl1vHQ/exec",
+  timeframe: "15m",
+  webhookUrl: "",
 };
 
 // ---------- Scoring ----------
@@ -232,9 +247,8 @@ function managementForClass(cls: "A"|"B"|"C"){ switch(cls){
 function classTone(c: "A"|"B"|"C"){ return c === "A" ? "green" : c === "B" ? "yellow" : "red"; }
 
 function Tabs({tab,setTab}:{tab:"dashboard"|"tracker"; setTab:(t:"dashboard"|"tracker")=>void;}){
-  const Item=({id,children}:{id:"dashboard"|"tracker"; children:React.ReactNode;})=>(
-    <button onClick={()=>setTab(id)} className={`px-4 py-2 rounded-xl text-sm border ${tab===id?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-700 border-gray-200 hover:bg-gray-50"}`}>{children}</button>
-  );
+  const Item=({id,children}:{id:"dashboard"|"tracker"; children:React.ReactNode;})=>
+    (<button onClick={()=>setTab(id)} className={`px-4 py-2 rounded-xl text-sm border ${tab===id?"bg-indigo-600 text-white border-indigo-600":"bg-white text-gray-700 border-gray-200 hover:bg-gray-50"}`}>{children}</button>);
   return (<div className="flex gap-2"><Item id="dashboard">Dashboard</Item><Item id="tracker">HTF Story Tracker</Item></div>);
 }
 
@@ -257,17 +271,6 @@ export default function App(){
 
   useEffect(()=>{ localStorage.setItem(storeKey, JSON.stringify(data)); },[data]);
   useEffect(()=>{ localStorage.setItem(storyKey, JSON.stringify(stories)); },[stories]);
-
-  // Dev-time sanity tests (non-blocking)
-  useEffect(()=>{
-    try {
-      console.assert(mapDemandToScore({breach:"strong",volume:"high",correlation:"full",maFlow:"full",htfStory:"dash",causedByNews:"no"}).max === 11, "Demand max should be 11");
-      const sw = mapSwoopToScore({discount:"deal",oppositeIn:"yes",swoop:"clear",correlation:"full",volume:"yes"});
-      console.assert(sw.score === 10 && sw.max === 10, "Swoop perfect should be 10/10");
-      const dg = downgradeBySwoop("A", 2, 10, {discount:"nodeal",oppositeIn:"maybe",swoop:"maybe",correlation:"none",volume:"no"});
-      console.assert(["A","B","C"].includes(dg), "Downgrade returns a class");
-    } catch(_) {}
-  },[]);
 
   // Sync HTF Story for current pair from tracker
   useEffect(()=>{
@@ -299,6 +302,7 @@ export default function App(){
     date: data.date,
     session: data.session,
     news: data.news,
+    timeframe: data.timeframe,
     htfContext: currentStory,
     demand: data.demand,
     swoop: data.swoop,
@@ -344,7 +348,7 @@ export default function App(){
   const exportCSV = () => {
     const p: any = buildPayload();
     const hdr = [
-      "timestamp","pair","date","session","news",
+      "timestamp","pair","date","session","news","timeframe",
       "anchor","story","story_corr",
       "d_breach","d_volume","d_corr","d_ma","d_htf","d_news_caused",
       "s_discount","s_oppIn","s_swoop","s_corr","s_vol",
@@ -352,14 +356,15 @@ export default function App(){
       "reminders","quotes","notes","demandNotes","swoopNotes"
     ];
     const row = [
-      p.timestamp, p.pair, p.date, p.session, p.news,
+      p.timestamp, p.pair, p.date, p.session, p.news, p.timeframe,
       p.anchor, p.story, p.story_corr,
       p.d_breach, p.d_volume, p.d_corr, p.d_ma, p.d_htf, p.d_news_caused,
       p.s_discount, p.s_oppIn, p.s_swoop, p.s_corr, p.s_vol,
       p.d_score, p.d_max, p.s_score, p.s_max, p.finalPct, p.baseClass, p.adjustedClass,
       JSON.stringify(p.reminders).replaceAll("\"","'"), JSON.stringify(p.quotes).replaceAll("\"","'"), JSON.stringify(p.notes).replaceAll("\"","'"), JSON.stringify(p.demandNotes).replaceAll("\"","'"), JSON.stringify(p.swoopNotes).replaceAll("\"","'")
     ];
-    const csv = `${hdr.join(",")}\n${row.map((v:any)=>`${v}`).join(",")}`;
+    const csv = `${hdr.join(",")}
+${row.map((v:any)=>`${v}`).join(",")}`;
     const blob = new Blob([csv], { type:"text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -368,21 +373,18 @@ export default function App(){
   };
 
   const exportToGoogleSheet = async () => {
-    if (!data.webhookUrl) { alert("Add your Google Sheet webhook URL in Settings"); return; }
-    try {
+    if(!data.webhookUrl){ alert("Add your Google Sheet webhook URL in Settings"); return; }
+    try{
       const payload = buildPayload();
       payload.secret = ""; // set if your Apps Script checks it
-      const res = await fetch(data.webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+      const res = await fetch(data.webhookUrl + "?mode=journal", {
+        method:"POST",
+        headers:{ "Content-Type":"text/plain;charset=utf-8" },
         body: JSON.stringify(payload),
       });
-      // In no-cors mode you cannot read response; we are not using that here
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
       alert("Sent to Google Sheet");
-    } catch (e: any) {
-      alert(`Failed to send: ${e.message}`);
-    }
+    }catch(e:any){ alert(`Failed to send: ${e.message}`); }
   };
 
   const StoryTracker = () => (
@@ -433,8 +435,8 @@ export default function App(){
         <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Trade Setup Quality Dashboard</h1>
-              <p className="text-sm text-gray-600 mt-1">Rank the quality of your setup using your edge. Scores and notes are saved locally.</p>
-              <div className="text-[10px] text-gray-400 mt-1">{APP_VERSION}</div>
+            <p className="text-sm text-gray-600 mt-1">Rank the quality of your setup using your edge. Scores and notes are saved locally.</p>
+            <div className="text-[10px] text-gray-400 mt-1">{APP_VERSION}</div>
           </div>
           <div className="flex items-center gap-3">
             <Tabs tab={tab} setTab={setTab} />
@@ -445,28 +447,35 @@ export default function App(){
         </header>
 
         <div className="grid md:grid-cols-3 gap-6">
-          <SectionCard title="Overall Ranking" right={<Pill tone={classTone(adjustedClass as "A"|"B"|"C")}>Final: {adjustedClass} class</Pill>}>
+          {/* Overall Ranking with tone background and HTF context pills */}
+          <SectionCard title="Overall Ranking" right={<Pill tone={classTone(adjustedClass as "A"|"B"|"C")}>Final: {adjustedClass} class</Pill>} tone={classTone(adjustedClass as "A"|"B"|"C") as any}>
+            <div className="flex flex-wrap gap-2">
+              <Pill tone="gray">Pair: {data.pair}</Pill>
+              <Pill tone="gray">Anchor TF: {currentStory.anchor}</Pill>
+              <Pill tone="gray">Story: {currentStory.story}</Pill>
+              <Pill tone="gray">Correlation: {currentStory.correlation}</Pill>
+            </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl bg-gray-50 p-4">
-                <p className="text-xs text-gray-500">Blended score</p>
+              <div className="rounded-xl bg-white/60 p-4">
+                <p className="text-xs text-gray-600">Blended score</p>
                 <p className="text-3xl font-bold">{finalPct}<span className="text-base font-semibold">/100</span></p>
               </div>
-              <div className="rounded-xl bg-gray-50 p-4">
-                <p className="text-xs text-gray-500">Base class from Demand</p>
+              <div className="rounded-xl bg-white/60 p-4">
+                <p className="text-xs text-gray-600">Base class from Demand</p>
                 <p className="text-3xl font-bold">{baseClass}</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl border p-4">
+              <div className="rounded-xl border border-white/60 bg-white/50 p-4">
                 <p className="text-sm font-medium">Demand score</p>
                 <p className="text-lg">{demandScore.score} / {demandScore.max} ({Math.round(demandScore.pct)}%)</p>
               </div>
-              <div className="rounded-xl border p-4">
+              <div className="rounded-xl border border-white/60 bg-white/50 p-4">
                 <p className="text-sm font-medium">Swoop score</p>
                 <p className="text-lg">{swoopScore.score} / {swoopScore.max} ({Math.round(swoopScore.pct)}%)</p>
               </div>
             </div>
-            <div className="pt-2 text-xs text-gray-500">If Swoop confidence is low, final class auto downgrades from the base class.</div>
+            <div className="pt-2 text-xs text-gray-700">If Swoop confidence is low, final class auto downgrades from the base class.</div>
           </SectionCard>
 
           <SectionCard title="Entry & Management" right={<Pill tone={classTone(adjustedClass as "A"|"B"|"C")}>{mgmt.title}</Pill>}>
@@ -492,6 +501,7 @@ export default function App(){
               </div>
               <Select label="Session" value={data.session} onChange={(v)=>setData((prev: DataModel)=>({...prev,session:v as Session}))} options={[{label:"Asia",value:"Asia"},{label:"London",value:"London"},{label:"New York",value:"New York"}]} />
               <Select label="News" value={data.news} onChange={(v)=>setData((prev: DataModel)=>({...prev,news:v as NewsImpact}))} options={[{label:"High Impact",value:"High Impact"},{label:"Medium Impact",value:"Medium Impact"},{label:"None",value:"None"}]} />
+              <Select label="Timeframe" value={data.timeframe} onChange={(v)=>setData((prev: DataModel)=>({...prev,timeframe:v as TradeTF}))} options={TRADE_TF.map(tf=>({label:tf,value:tf}))} />
             </div>
           </SectionCard>
 
