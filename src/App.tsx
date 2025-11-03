@@ -65,12 +65,6 @@ export interface DataModel {
   session: Session;
   news: NewsImpact;
   webhookUrl: string; // journal sheet endpoint
-  // Telegram reminders (serverless)
-  reminderEnabled: boolean;
-  reminderFrequency: 15 | 60 | 240; // minutes
-  reminderMessage: string;
-  telegramChatId: string; // your personal Telegram chat_id
-
 }
 
 // ---------- Constants ----------
@@ -194,12 +188,7 @@ const defaultData: DataModel = {
   date: "",
   session: "Asia",
   news: "None",
-  webhookUrl: "https://script.google.com/macros/s/AKfycbxuneHJ7IoHPD-uJQv8T9IMgkqadFlVUMAIt6vT6ykNLRc0c1EW1bbmawvZe9K8Yl1vHQ/exec",
-  reminderEnabled: false,
-  reminderFrequency: 15,
-  reminderMessage: "BOOK BOOK BOOK. Respect risk. Follow plan.",
-  telegramChatId: "",
-
+  On thUrl: "https://script.google.com/macros/s/AKfycbxuneHJ7IoHPD-uJQv8T9IMgkqadFlVUMAIt6vT6ykNLRc0c1EW1bbmawvZe9K8Yl1vHQ/exec",
 };
 
 // ---------- Scoring ----------
@@ -258,50 +247,6 @@ export default function App(){
       return s ? { ...defaultStories, ...JSON.parse(s) } : defaultStories;
     } catch { return defaultStories; }
   });
-
-  // Build a stable id for the current open trade row
-const openTradeId = useMemo(() => {
-  const day = data.date || new Date().toISOString().slice(0,10);
-  return `${data.pair}-${day}`;
-}, [data.pair, data.date]);
-
-// React when the user toggles reminders
-useEffect(() => {
-  // Do nothing if no Apps Script URL yet
-  if (!data.webhookUrl) return;
-
-  // When turning ON, upsert an active row
-  if (data.reminderEnabled) {
-    // guard: need chat id
-    if (!data.telegramChatId) {
-      alert("Add your Telegram Chat ID in Settings first");
-      // auto switch back off
-      setData((prev: any) => ({ ...prev, reminderEnabled: false }));
-      return;
-    }
-    upsertOpenTrade(data.webhookUrl, {
-      id: openTradeId,
-      chat_id: data.telegramChatId,
-      pair: data.pair,
-      reminder_message: data.reminderMessage,
-      frequency_minutes: data.reminderFrequency,
-      is_active: true,
-      // next_run_iso omitted to default to now
-    }).catch(err => {
-      alert(`Failed to arm reminders: ${err.message}`);
-      setData((prev: any) => ({ ...prev, reminderEnabled: false }));
-    });
-    return;
-  }
-
-  // When turning OFF, mark inactive
-  closeOpenTrade(data.webhookUrl, openTradeId).catch(err => {
-    // Not fatal for UX, just surface the error
-    console.warn("Failed to close open trade:", err);
-  });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [data.reminderEnabled, data.reminderFrequency, data.reminderMessage, data.telegramChatId, data.webhookUrl, openTradeId]);
-
 
   const [data,setData] = useState<DataModel>(()=>{
     try {
@@ -440,35 +385,17 @@ useEffect(() => {
     }
   };
 
-  // Upsert a row in the open_trades tab
-async function upsertOpenTrade(appsScriptUrl: string, trade: {
-  id: string;
-  chat_id: string;
-  pair: string;
-  reminder_message: string;
-  frequency_minutes: number;
-  is_active: boolean;
-  next_run_iso?: string;
-}) {
-  const next = trade.next_run_iso || new Date().toISOString(); // fire on next cron tick
-  const payload = { ...trade, next_run_iso: next };
-
-  const res = await fetch(`${appsScriptUrl}?mode=upsert_open_trade`, {
+  // ---- Quick client call (test-only) ----
+async function sendTelegram(text: string, botToken: string, chatId: string) {
+  if (!botToken || !chatId) {
+    alert("Add your Telegram bot token and chat id first");
+    return;
+  }
+  await fetch(`https://api.telegram.org/bot8449252983:AAGRCnBm8bineb4i6ZJW8ZRIIeYhiqDWsWM/sendMessage`, {
     method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" }, // avoid preflight
-    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
   });
-  if (!res.ok) throw new Error(`Upsert failed HTTP ${res.status}`);
-}
-
-// Mark a trade inactive in open_trades
-async function closeOpenTrade(appsScriptUrl: string, id: string) {
-  const res = await fetch(`${appsScriptUrl}?mode=close_open_trade`, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify({ id }),
-  });
-  if (!res.ok) throw new Error(`Close failed HTTP ${res.status}`);
 }
 
 
@@ -651,65 +578,6 @@ async function closeOpenTrade(appsScriptUrl: string, id: string) {
               <p className="text-xs text-gray-500 mt-1">Create an Apps Script doPost that appends JSON to a row, deploy as Web App with Anyone access. Paste the URL here and click Send to Google Sheet.</p>
             </div>
           </div>
-          <div className="rounded-xl border p-3">
-  <div className="flex items-center justify-between">
-    <label className="text-sm font-medium text-gray-700">Active trade reminders (serverless)</label>
-    <label className="inline-flex items-center cursor-pointer">
-      <input
-        type="checkbox"
-        className="sr-only peer"
-        checked={data.reminderEnabled}
-        onChange={(e)=>setData(prev=>({...prev, reminderEnabled: e.target.checked }))}
-      />
-      <span className="w-10 h-6 bg-gray-200 rounded-full peer-checked:bg-indigo-600 relative after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:h-4 after:w-4 after:rounded-full after:transition-all peer-checked:after:translate-x-4"></span>
-    </label>
-  </div>
-
-  <div className="mt-3 grid gap-3">
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-gray-600">Frequency</span>
-      <select
-        className="rounded-lg border p-1 text-sm"
-        value={data.reminderFrequency}
-        onChange={(e)=>setData(prev=>({...prev, reminderFrequency: Number(e.target.value) as 15|60|240}))}
-      >
-        <option value={15}>Every 15 min</option>
-        <option value={60}>Every 1 hour</option>
-        <option value={240}>Every 4 hours</option>
-      </select>
-    </div>
-
-    <div className="flex flex-col">
-      <label className="text-xs text-gray-600">Message</label>
-      <input
-        className="rounded-lg border p-2 text-sm"
-        value={data.reminderMessage}
-        onChange={(e)=>setData(prev=>({...prev, reminderMessage: e.target.value}))}
-        placeholder="BOOK BOOK BOOK. Respect risk. Follow plan."
-      />
-    </div>
-
-    <div className="flex flex-col">
-      <label className="text-xs text-gray-600">Telegram Chat ID</label>
-      <input
-        className="rounded-lg border p-2 text-sm"
-        value={data.telegramChatId}
-        onChange={(e)=>setData(prev=>({...prev, telegramChatId: e.target.value}))}
-        placeholder="123456789"
-      />
-      <p className="text-[11px] text-gray-500 mt-1">
-        Your Vercel function holds the bot token. The cron reads this chat ID from the sheet.
-      </p>
-    </div>
-
-    {data.reminderEnabled ? (
-      <span className="text-xs text-green-700">Armed for {data.pair}. Cron will send every {data.reminderFrequency} min.</span>
-    ) : (
-      <span className="text-xs text-gray-500">Off</span>
-    )}
-  </div>
-</div>
-
         </SectionCard>
 
         <footer className="py-6 text-center text-xs text-gray-500">Built for quick session prep. Adjust weights in code if you prefer a different model.</footer>
