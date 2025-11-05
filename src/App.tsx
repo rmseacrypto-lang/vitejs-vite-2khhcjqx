@@ -97,6 +97,68 @@ const CORR_OPTIONS: { label: string; value: Correlation }[] = [
   { label: "Partial", value: "partial" },
   { label: "None", value: "none" },
 ];
+// ---------- Scoring config (easy to tweak) ----------
+
+const DEMAND_WEIGHTS = {
+  breach: {
+    strong: 2,
+    ok: 1,
+  },
+  volume: {
+    high: 1,
+    normal: 0,
+  },
+  correlation: {
+    full: 3,
+    partial: 1,
+    none: 0,
+  },
+  maFlow: {
+    full: 2,   // Flow
+    mixed: 1,
+  },
+  story: {
+    pullback: 1,
+    swoop: 2,
+    hold: 0,
+    fomo: 2,
+    dash: 3,
+    on: 2,
+  },
+  max: 11,     // keep your current total here
+} as const;
+
+const SWOOP_WEIGHTS = {
+  discount: {
+    deal: 2,
+    nodeal: 1,
+  },
+  oppositeIn: {
+    yes: 2,
+    maybe: 1,
+  },
+  swoop: {
+    clear: 2,
+    maybe: 0,
+  },
+  correlation: {
+    full: 3,
+    partial: 1,
+    none: 0,
+  },
+  volume: {
+    yes: 1,
+    no: 0,
+  },
+  max: 10,
+} as const;
+
+// Overall blend of demand vs swoop
+const BLEND = {
+  demand: 0.6,
+  swoop: 0.4,
+};
+
 
 // ---------- UI bits ----------
 const Select = ({ label, value, onChange, options, hint, disabled }:{
@@ -212,26 +274,27 @@ const defaultData: DataModel = {
 };
 
 // ---------- Scoring ----------
-function mapDemandToScore(d: Demand){
+function mapDemandToScore(d: Demand) {
   let s = 0;
-  s += d.breach === "strong" ? 2 : 1;
-  s += d.volume === "high" ? 1 : 0;
-  s += d.correlation === "full" ? 3 : (d.correlation === "partial" ? 1 : 0);
-  s += d.maFlow === "full" ? 2 : 1;
-  const storyScore: Record<Story, number> = { pullback: 1, swoop: 2, hold: 0, fomo: 2, dash: 3, on: 2 };
-  s += storyScore[d.htfStory];
-  return { score: s, max: 11 };
+  s += DEMAND_WEIGHTS.breach[d.breach];
+  s += DEMAND_WEIGHTS.volume[d.volume];
+  s += DEMAND_WEIGHTS.correlation[d.correlation];
+  s += DEMAND_WEIGHTS.maFlow[d.maFlow];
+  s += DEMAND_WEIGHTS.story[d.htfStory];
+  return { score: s, max: DEMAND_WEIGHTS.max };
 }
 
-function mapSwoopToScore(s: Swoop){
+
+function mapSwoopToScore(s: Swoop) {
   let t = 0;
-  t += s.discount === "deal" ? 2 : 1;
-  t += s.oppositeIn === "yes" ? 2 : 1;
-  t += s.swoop === "clear" ? 2 : 0;
-  t += s.correlation === "full" ? 3 : (s.correlation === "partial" ? 1 : 0);
-  t += s.volume === "yes" ? 1 : 0;
-  return { score: t, max: 10 };
+  t += SWOOP_WEIGHTS.discount[s.discount];
+  t += SWOOP_WEIGHTS.oppositeIn[s.oppositeIn];
+  t += SWOOP_WEIGHTS.swoop[s.swoop];
+  t += SWOOP_WEIGHTS.correlation[s.correlation];
+  t += SWOOP_WEIGHTS.volume[s.volume];
+  return { score: t, max: SWOOP_WEIGHTS.max };
 }
+
 
 function scoreToClass(pct: number){ if (pct >= 75) return "A" as const; if (pct >= 50) return "B" as const; return "C" as const; }
 
@@ -292,7 +355,7 @@ export default function App(){
     const s = mapSwoopToScore(data.swoop);
     const demandPct = (d.score/d.max)*100;
     const swoopPct = (s.score/s.max)*100;
-    const blended = demandPct*0.6 + swoopPct*0.4;
+    const blended = demandPct * BLEND.demand + swoopPct * BLEND.swoop;
     const base = scoreToClass(demandPct);
     const downgraded = downgradeBySwoop(base, s.score, s.max, data.swoop);
     return { demandScore:{...d,pct:demandPct}, swoopScore:{...s,pct:swoopPct}, baseClass:base, adjustedClass:downgraded, finalPct:Math.round(blended) };
@@ -457,42 +520,93 @@ ${row.map((v:any)=>`${v}`).join(",")}`;
 
         <div className="grid md:grid-cols-3 gap-6">
           {/* Overall Ranking with tone background and HTF context pills */}
-          <SectionCard title="Overall Ranking" right={<Pill tone={classTone(adjustedClass as "A"|"B"|"C")}>Final: {adjustedClass} class</Pill>} tone={classTone(adjustedClass as "A"|"B"|"C") as any}>
-            <div className="flex flex-wrap gap-2">
-              <Pill tone="gray">Pair: {data.pair}</Pill>
-              <Pill tone="gray">Anchor TF: {currentStory.anchor}</Pill>
-              <Pill tone="gray">Story: {currentStory.story}</Pill>
-              <Pill tone="gray">Correlation: {currentStory.correlation}</Pill>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl bg-white/60 p-4">
-                <p className="text-xs text-gray-600">Blended score</p>
-                <p className="text-3xl font-bold">{finalPct}<span className="text-base font-semibold">/100</span></p>
+          {/* Overall Ranking card */}
+          <SectionCard
+            title="Overall Ranking"
+            right={
+              <Pill tone={classTone(adjustedClass as "A" | "B" | "C")}>
+                Final: {adjustedClass} class
+              </Pill>
+            }
+          >
+            {/* Colored background for risk */}
+            <div
+              className={`rounded-2xl border p-4 grid gap-4 ${
+                adjustedClass === "A"
+                  ? "bg-green-50 border-green-200"
+                  : adjustedClass === "B"
+                  ? "bg-yellow-50 border-yellow-200"
+                  : "bg-red-50 border-red-200"
+              }`}
+            >
+              {/* HTF context pills at top */}
+              <div className="flex flex-wrap gap-2 text-xs mb-2">
+                <Pill tone="gray">Pair: {data.pair}</Pill>
+                <Pill tone="gray">Anchor TF: {currentStory.anchor}</Pill>
+                <Pill tone="gray">Story: {currentStory.story}</Pill>
+                <Pill tone="gray">Correlation: {currentStory.correlation}</Pill>
               </div>
-              <div className="rounded-xl bg-white/60 p-4">
-                <p className="text-xs text-gray-600">Base class from Demand</p>
-                <p className="text-3xl font-bold">{baseClass}</p>
+
+              {/* Score boxes */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <p className="text-xs text-gray-600">Blended score</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {finalPct}
+                    <span className="text-base font-semibold text-gray-800">/100</span>
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white p-4 shadow-sm">
+                  <p className="text-xs text-gray-600">Base class from Demand</p>
+                  <p className="text-3xl font-bold text-gray-900">{baseClass}</p>
+                </div>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl border border-white/60 bg-white/50 p-4">
-                <p className="text-sm font-medium">Demand score</p>
-                <p className="text-lg">{demandScore.score} / {demandScore.max} ({Math.round(demandScore.pct)}%)</p>
+
+              {/* Demand / Swoop scores */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-xl bg-white/90 p-4 border border-gray-100">
+                  <p className="text-sm font-medium text-gray-800">Demand score</p>
+                  <p className="text-lg text-gray-900">
+                    {demandScore.score} / {demandScore.max} (
+                    {Math.round(demandScore.pct)}%)
+                  </p>
+                </div>
+                <div className="rounded-xl bg-white/90 p-4 border border-gray-100">
+                  <p className="text-sm font-medium text-gray-800">Swoop score</p>
+                  <p className="text-lg text-gray-900">
+                    {swoopScore.score} / {swoopScore.max} (
+                    {Math.round(swoopScore.pct)}%)
+                  </p>
+                </div>
               </div>
-              <div className="rounded-xl border border-white/60 bg-white/50 p-4">
-                <p className="text-sm font-medium">Swoop score</p>
-                <p className="text-lg">{swoopScore.score} / {swoopScore.max} ({Math.round(swoopScore.pct)}%)</p>
-              </div>
-              <div className="text-xs text-gray-600">
-                Result: <span className="font-semibold">{data.resultR || "—"} R</span> • Outcome:{" "}
-                <span className={`font-semibold ${data.outcome === "Win" ? "text-green-700" : "text-red-700"}`}>
-                  {data.outcome}
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                {/* Result pill */}
+                <span className="inline-flex items-center rounded-full bg-white/80 px-2 py-0.5 border border-gray-200 text-gray-800">
+                  <span>Result:</span>
+                  <span className="ml-1 font-semibold text-gray-900">
+                    {data.resultR || "—"} R
+                  </span>
+                </span>
+
+                {/* Outcome pill */}
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 font-semibold ${
+                    data.outcome === "Win"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-red-100 text-red-800"
+                  }`}
+                >
+                  Outcome: {data.outcome}
                 </span>
               </div>
 
+              <div className="pt-2 text-[11px] text-gray-600">
+                If Swoop confidence is low, final class auto downgrades from the base
+                class.
+              </div>
             </div>
-            <div className="pt-2 text-xs text-gray-700">If Swoop confidence is low, final class auto downgrades from the base class.</div>
           </SectionCard>
+
 
           <SectionCard title="Entry & Management" right={<Pill tone={classTone(adjustedClass as "A"|"B"|"C")}>{mgmt.title}</Pill>}>
             <ul className="list-disc ml-5 text-sm grid gap-1">
