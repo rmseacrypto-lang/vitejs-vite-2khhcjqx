@@ -102,7 +102,7 @@ const CORR_OPTIONS: { label: string; value: Correlation }[] = [
 const DEMAND_WEIGHTS = {
   breach: {
     strong: 2,
-    ok: 1,
+    ok: 0,
   },
   volume: {
     high: 1,
@@ -115,7 +115,7 @@ const DEMAND_WEIGHTS = {
   },
   maFlow: {
     full: 2,   // Flow
-    mixed: 1,
+    mixed: 0,
   },
   story: {
     pullback: 1,
@@ -147,10 +147,10 @@ const SWOOP_WEIGHTS = {
     none: 0,
   },
   volume: {
-    yes: 1,
+    yes: 3,
     no: 0,
   },
-  max: 10,
+  max: 12,
 } as const;
 
 // Overall blend of demand vs swoop
