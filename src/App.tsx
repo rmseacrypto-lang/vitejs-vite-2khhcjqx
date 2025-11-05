@@ -4,7 +4,7 @@ import React, { useMemo, useEffect, useState } from "react";
 // Tailwind via CDN in index.html
 // Data is saved to localStorage
 
-const APP_VERSION = "v 1.00.004";
+const APP_VERSION = "v 1.00.005";
 
 // ---------- Types ----------
 export type Pair =
@@ -28,6 +28,7 @@ export type OppositeIn = "yes" | "maybe";
 export type SwoopClarity = "clear" | "maybe";
 export type Session = "Asia" | "London" | "New York";
 export type NewsImpact = "High Impact" | "Medium Impact" | "None";
+export type Outcome = "Win" | "Loss";
 
 export interface Demand {
   breach: Breach;
@@ -67,6 +68,8 @@ export interface DataModel {
   news: NewsImpact;
   timeframe: TradeTF; // NEW: current setup timeframe
   webhookUrl: string; // journal sheet endpoint
+  resultR: string;     // store as string for easy input binding
+  outcome: Outcome;    // Win or Loss  
 }
 
 // ---------- Constants ----------
@@ -204,6 +207,8 @@ const defaultData: DataModel = {
   news: "None",
   timeframe: "15m",
   webhookUrl: "",
+  resultR: "",
+  outcome: "Win",
 };
 
 // ---------- Scoring ----------
@@ -312,6 +317,9 @@ export default function App(){
     notes: data.notes,
     demandNotes: data.demandNotes,
     swoopNotes: data.swoopNotes,
+    resultR: data.resultR,
+    outcome: data.outcome,
+
     // Flatten for journal
     anchor: currentStory.anchor,
     story: currentStory.story,
@@ -353,7 +361,7 @@ export default function App(){
       "d_breach","d_volume","d_corr","d_ma","d_htf","d_news_caused",
       "s_discount","s_oppIn","s_swoop","s_corr","s_vol",
       "d_score","d_max","s_score","s_max","finalPct","baseClass","adjustedClass",
-      "reminders","quotes","notes","demandNotes","swoopNotes"
+      "reminders","quotes","notes","demandNotes","swoopNotes","resultR","outcome"
     ];
     const row = [
       p.timestamp, p.pair, p.date, p.session, p.news, p.timeframe,
@@ -362,6 +370,7 @@ export default function App(){
       p.s_discount, p.s_oppIn, p.s_swoop, p.s_corr, p.s_vol,
       p.d_score, p.d_max, p.s_score, p.s_max, p.finalPct, p.baseClass, p.adjustedClass,
       JSON.stringify(p.reminders).replaceAll("\"","'"), JSON.stringify(p.quotes).replaceAll("\"","'"), JSON.stringify(p.notes).replaceAll("\"","'"), JSON.stringify(p.demandNotes).replaceAll("\"","'"), JSON.stringify(p.swoopNotes).replaceAll("\"","'")
+      ,p.resultR, p.outcome
     ];
     const csv = `${hdr.join(",")}
 ${row.map((v:any)=>`${v}`).join(",")}`;
@@ -474,6 +483,13 @@ ${row.map((v:any)=>`${v}`).join(",")}`;
                 <p className="text-sm font-medium">Swoop score</p>
                 <p className="text-lg">{swoopScore.score} / {swoopScore.max} ({Math.round(swoopScore.pct)}%)</p>
               </div>
+              <div className="text-xs text-gray-600">
+                Result: <span className="font-semibold">{data.resultR || "—"} R</span> • Outcome:{" "}
+                <span className={`font-semibold ${data.outcome === "Win" ? "text-green-700" : "text-red-700"}`}>
+                  {data.outcome}
+                </span>
+              </div>
+
             </div>
             <div className="pt-2 text-xs text-gray-700">If Swoop confidence is low, final class auto downgrades from the base class.</div>
           </SectionCard>
@@ -483,6 +499,68 @@ ${row.map((v:any)=>`${v}`).join(",")}`;
               {mgmt.bullets.map((b, i) => (<li key={i}>{b}</li>))}
             </ul>
             <NoteBox label="Custom reminders" value={data.reminders} onChange={(v)=>setData((prev: DataModel)=>({...prev,reminders:v}))} placeholder="Write specific steps you will follow for this trade" />
+            <div className="grid md:grid-cols-3 gap-4 pt-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Result (R)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  inputMode="decimal"
+                  className="rounded-xl border border-gray-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. 1, 2.5, -0.7"
+                  value={data.resultR}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setData((prev: DataModel) => {
+                      // auto set outcome if user types a signed number
+                      const n = Number(v);
+                      const autoOutcome: Outcome =
+                        !isNaN(n) ? (n < 0 ? "Loss" : "Win") : prev.outcome;
+                      return { ...prev, resultR: v, outcome: autoOutcome };
+                    });
+                  }}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter result in R units. Negative for losses.
+                </p>
+              </div>
+
+  <Select
+    label="Outcome"
+    value={data.outcome}
+    onChange={(v) =>
+      setData((prev: DataModel) => ({ ...prev, outcome: v as Outcome }))
+    }
+    options={[
+      { label: "Win", value: "Win" },
+      { label: "Loss", value: "Loss" },
+    ]}
+  />
+
+  {/* quick chips for convenience */}
+  <div className="flex flex-col gap-1">
+    <label className="text-sm font-medium text-gray-700">Quick set</label>
+    <div className="flex flex-wrap gap-2">
+      {["+1", "+2", "+3", "-0.5", "-1"].map((t) => (
+        <button
+          key={t}
+          type="button"
+          className="px-3 py-1 rounded-full border text-xs hover:bg-gray-50"
+          onClick={() =>
+            setData((prev: DataModel) => {
+              const n = Number(t.replace("+", ""));
+              const outcome: Outcome = n < 0 ? "Loss" : "Win";
+              return { ...prev, resultR: String(n), outcome };
+            })
+          }
+        >
+          {t} R
+        </button>
+      ))}
+    </div>
+  </div>
+</div>
+
           </SectionCard>
 
           <SectionCard title="Mindset & Notes">
